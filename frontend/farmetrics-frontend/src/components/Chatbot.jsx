@@ -15,7 +15,7 @@ const KNOWLEDGE_BASE = {
     "default": "That's an interesting question! While I'm still learning, I recommend checking our 'Resources' section for detailed guides, or you can ask about yields and schemes."
 };
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+// API Key moved to secure backend
 
 function Chatbot() {
     const [isOpen, setIsOpen] = useState(false);
@@ -26,12 +26,6 @@ function Chatbot() {
     const [isTyping, setIsTyping] = useState(false);
     const chatEndRef = useRef(null);
 
-    // --- DEBUG: LOG KEY TO CONSOLE ---
-    useEffect(() => {
-        if (isOpen) {
-            console.log("Chatbot Opened. API Key Status:", GEMINI_API_KEY ? "Found" : "Missing");
-        }
-    }, [isOpen]);
 
     const scrollToBottom = () => {
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -50,75 +44,35 @@ function Chatbot() {
         setInput("");
         setIsTyping(true);
 
-        // --- OPTION 1: GEMINI AI (Primary Brain) ---
-        if (GEMINI_API_KEY && GEMINI_API_KEY.length > 20) {
-            // Priority list based on user's authorized models
-            const modelsToTry = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite"];
-            let lastError = "";
+        // --- SECURE BACKEND API CALL ---
+        try {
+            const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+            const response = await fetch(`${API_BASE_URL}/api/chat`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    messages: messages,
+                    userMsg: userMsg
+                })
+            });
 
-            const systemPrompt = "You are Srishti, an intelligent Indian farming assistant for 'Farmetrics'. Created by Priyam Pandey. You are an expert in crop yields, Indian government schemes, and land records. Tone: encouraging, expert, professional. Always use 'Namaste'.";
+            const data = await response.json();
 
-            const chatHistory = messages
-                .slice(1)
-                .map(m => `${m.isBot ? "Assistant" : "User"}: ${m.text}`)
-                .join("\n");
-
-            const fullPrompt = `${systemPrompt}\n\nRecent Conversation:\n${chatHistory}\n\nUser Question: ${userMsg}\n\nDetailed Expert Answer:`;
-
-            for (const modelName of modelsToTry) {
-                try {
-                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
-
-                    const response = await fetch(url, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: fullPrompt }] }]
-                        })
-                    });
-
-                    const data = await response.json();
-
-                    if (data.error) {
-                        lastError = data.error.message;
-                        continue; // Try next model
-                    }
-
-                    if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
-                        const text = data.candidates[0].content.parts[0].text;
-                        setMessages(prev => [...prev, { text, isBot: true }]);
-                        setIsTyping(false);
-                        return; // ✅ Success!
-                    }
-                } catch (err) {
-                    lastError = err.message;
-                }
+            if (data.text) {
+                setMessages(prev => [...prev, { text: data.text, isBot: true }]);
+            } else {
+                throw new Error(data.message || data.error || "Failed to get response from server");
             }
-
-            // --- FINAL ATTEMPT: List Models to debug ---
-            try {
-                const listUrl = `https://generativelanguage.googleapis.com/v1/models?key=${GEMINI_API_KEY}`;
-                const listRes = await fetch(listUrl);
-                const listData = await listRes.json();
-
-                if (listData.models) {
-                    const availableModels = listData.models.map(m => m.name.split('/').pop()).join(", ");
-                    setMessages(prev => [...prev, {
-                        text: `⚠️ My models (Flash/Pro) are not responding. \n\nYour account supports: ${availableModels}. \n\nPlease tell Natasha's creator, Priyam, which one to activate!`,
-                        isBot: true
-                    }]);
-                } else {
-                    throw new Error("Could not list models.");
-                }
-            } catch (err) {
-                setMessages(prev => [...prev, {
-                    text: `⚠️ Connection Failed. \n\nError: ${lastError}\n\nTip: You might need to refresh your API key in AI Studio.`,
-                    isBot: true
-                }]);
-            }
-            setIsTyping(false);
-            return;
+        } catch (err) {
+            console.error("Chat Error:", err);
+            setMessages(prev => [...prev, {
+                text: `⚠️ Connection Failed. \n\nError: ${err.message}\n\nPlease make sure the chatbot backend is running!`,
+                isBot: true
+            }]);
         }
+        setIsTyping(false);
+        return;
+
 
         // --- OPTION 2: FALLBACK (Only if key is missing) ---
         setTimeout(() => {
@@ -162,13 +116,9 @@ function Chatbot() {
                             <h3 className="font-bold">Srishti</h3>
                             <div className="text-[10px] flex items-center gap-2">
                                 <span className="text-green-200">Online</span>
-                                {GEMINI_API_KEY && GEMINI_API_KEY.length > 20 ? (
-                                    <span className="bg-green-600 px-1.5 py-0.5 rounded text-white flex items-center gap-1">
-                                        <span className="w-1 h-1 bg-white rounded-full"></span> AI Active
-                                    </span>
-                                ) : (
-                                    <span className="bg-orange-500 px-1.5 py-0.5 rounded text-white">Offline Mode</span>
-                                )}
+                                <span className="bg-green-600 px-1.5 py-0.5 rounded text-white flex items-center gap-1">
+                                    <span className="w-1 h-1 bg-white rounded-full"></span> AI Active
+                                </span>
                             </div>
                         </div>
                     </div>
